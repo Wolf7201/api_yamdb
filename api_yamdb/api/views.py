@@ -1,13 +1,12 @@
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
-from django.db import IntegrityError
 from django.shortcuts import get_object_or_404
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework_simplejwt.tokens import AccessToken
+from rest_framework_simplejwt.tokens import RefreshToken
 from titles.models import Categories, Genres, Titles
 from users.models import User
 
@@ -42,6 +41,7 @@ class UserViewSet(viewsets.ModelViewSet):
         user = request.user
         if request.method == 'PUT':
             return Response(
+                serializer.errors,
                 status=status.HTTP_405_METHOD_NOT_ALLOWED
             )
         if request.method == 'GET':
@@ -58,12 +58,9 @@ class UserViewSet(viewsets.ModelViewSet):
 def sign_up(request):
     serializer = SignUpSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
+    serializer.save()
     username = serializer.validated_data['username']
-    email = serializer.validated_data['email']
-    try:
-        user, _ = User.objects.get_or_create(email=email, username=username)
-    except IntegrityError:
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    user = get_object_or_404(User, username=username)
     confirmation_code = default_token_generator.make_token(user)
     send_mail(
         subject='Регистрация',
@@ -84,8 +81,8 @@ def get_token(request):
         confirmation_code = request.data['confirmation_code']
         user = get_object_or_404(User, username=username)
         if default_token_generator.check_token(user, confirmation_code):
-            token = AccessToken.for_user(user)
-            return Response({'token': f'{token}'})
+            refresh = RefreshToken.for_user(user)
+            return Response({'token': str(refresh.access_token)})
         else:
             return Response(status=status.HTTP_400_BAD_REQUEST)
     return Response(status=status.HTTP_400_BAD_REQUEST)
