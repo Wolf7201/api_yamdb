@@ -1,3 +1,4 @@
+from django.core.validators import RegexValidator
 from rest_framework import serializers
 from titles.models import Categories, Genres, Titles
 from users.models import ROLE, User
@@ -30,7 +31,7 @@ class UserViewSerializer(serializers.ModelSerializer):
             username=username
         ).exists():
             raise serializers.ValidationError(
-                'Такое имя уже зарегистрироавно!'
+                'Такое имя уже зарегистрировано!'
             )
         return username
 
@@ -42,28 +43,24 @@ class UserViewSerializer(serializers.ModelSerializer):
         return email
 
 
-class SignUpSerializer(serializers.ModelSerializer):
-    email = serializers.EmailField(max_length=254, required=True)
-    username = serializers.RegexField(regex=r'^[\w.@+-]+$', max_length=150)
-
-    class Meta:
-        fields = ('email', 'username')
-        model = User
+class SignUpSerializer(serializers.Serializer):
+    email = serializers.EmailField(max_length=254)
+    username = serializers.CharField(
+        validators=[RegexValidator(regex=r'^[\w.@+-]+$')],
+        max_length=150
+    )
 
     def validate_username(self, username):
-        return UserViewSerializer.validate_username(self, username)
+        if username == 'me':
+            raise serializers.ValidationError(
+                'Такое имя пользователя недоступно!'
+            )
+        return username
 
-    def validate_email(self, email):
-        return UserViewSerializer.validate_email(self, email)
 
-
-class AuthenticatedSerializer(serializers.ModelSerializer):
+class AuthenticatedSerializer(serializers.Serializer):
     username = serializers.CharField(required=True)
     confirmation_code = serializers.CharField(required=True)
-
-    class Meta:
-        fields = ('username', 'confirmation_code')
-        model = User
 
 
 class CategoriesSerializer(serializers.ModelSerializer):
