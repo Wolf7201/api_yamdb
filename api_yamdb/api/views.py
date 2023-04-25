@@ -48,16 +48,16 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response(serializer.data, status=status.HTTP_200_OK)
         serializer = self.get_serializer(user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save(role=user.role, partial=True)
+        serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 def send_meil(user):
-    user.confirmation_code = default_token_generator.make_token(user)
+    confirmation_code = default_token_generator.make_token(user)
     user.save()
     send_mail(
         subject='Регистрация',
-        message=f'Код подтверждения: {user.confirmation_code}',
+        message=f'Код подтверждения: {confirmation_code}',
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[user.email],
         fail_silently=False,
@@ -67,16 +67,16 @@ def send_meil(user):
 @api_view(['POST'])
 @permission_classes((AllowAny,))
 def sign_up(request):
-    check_user = User.objects.filter(
-        username=request.data.get('username'),
-        email=request.data.get('email')
-    )
-    if check_user:
-        return Response(request.data, status=status.HTTP_200_OK)
     serializer = SignUpSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    user, _ = User.objects.get_or_create(**serializer.validated_data)
-    send_meil(user)
+    username = serializer.validated_data['username']
+    email = serializer.validated_data['email']
+    user = User.objects.filter(username=username).first()
+    user2 = User.objects.filter(email=email).first()
+    if user != user2:
+        return Response(status=status.HTTP_400_BAD_REQUEST)
+    user3, _ = User.objects.get_or_create(username=username, email=email)
+    send_meil(user3)
     return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -84,22 +84,18 @@ def sign_up(request):
 @permission_classes((AllowAny,))
 def get_token(request):
     serializer = AuthenticatedSerializer(data=request.data)
-    if serializer.is_valid(raise_exception=True):
-        username = request.data['username']
-        confirmation_code = request.data['confirmation_code']
-        user = get_object_or_404(User, username=username)
-        if default_token_generator.check_token(user, confirmation_code):
-            token = AccessToken.for_user(user)
-            return Response({'token': f'{token}'})
-        else:
-            return Response(
-                'Не подходит токен!',
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    return Response(
-        'Проблема с аутентификацей!',
-        status=status.HTTP_400_BAD_REQUEST
-    )
+    serializer.is_valid(raise_exception=True)
+    username = request.data['username']
+    confirmation_code = request.data['confirmation_code']
+    user = get_object_or_404(User, username=username)
+    if default_token_generator.check_token(user, confirmation_code):
+        token = AccessToken.for_user(user)
+        return Response({'token': f'{token}'})
+    else:
+        return Response(
+            'Не подходит токен!',
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
 
 class CategoryViewSet(CustomViewSet):
